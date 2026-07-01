@@ -1,0 +1,1 @@
+This file is intentionally omitted; see docs/operational-notes.md.
