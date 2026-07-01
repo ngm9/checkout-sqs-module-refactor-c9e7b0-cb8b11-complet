@@ -1,92 +1,26 @@
 # Checkout messaging infrastructure for the ShopNest checkout service.
 #
 # These queues carry checkout domain events. Each queue is paired with a
-# dead-letter queue. The blocks below were originally created by copying a
-# single queue definition and editing the names. A recent change introduced
-# a workspace prefix on the queue names.
+# dead-letter queue. The three queues are defined by a single reusable
+# module driven by an input map, so adding a new queue requires editing
+# only the var.queues map.
 #
 # Existing production queue names (already live, must remain stable):
 #   orders-created / orders-created-dlq
 #   payments-captured / payments-captured-dlq
 #   inventory-reserved / inventory-reserved-dlq
+#
+# The prod workspace uses unprefixed names to preserve existing queue
+# identities. Non-prod workspaces add the environment prefix.
 
 # ---------------------------------------------------------------------------
-# orders-created
+# Reusable module — one instance per queue in the input map
 # ---------------------------------------------------------------------------
-resource "aws_sqs_queue" "orders_created_dlq" {
-  name = "${terraform.workspace}-orders-created-dlq"
+module "checkout_queues" {
+  source   = "./modules/sqs_queue"
+  for_each = local.queue_configs
 
-  tags = {
-    Service     = "checkout"
-    Environment = terraform.workspace
-    CostCenter  = "ecom-checkout"
-  }
-}
-
-resource "aws_sqs_queue" "orders_created" {
-  name = "${terraform.workspace}-orders-created"
-
-  redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.orders_created_dlq.arn
-    maxReceiveCount     = 5
-  })
-
-  tags = {
-    Service     = "checkout"
-    Environment = terraform.workspace
-    CostCenter  = "ecom-checkout"
-  }
-}
-
-# ---------------------------------------------------------------------------
-# payments-captured
-# ---------------------------------------------------------------------------
-resource "aws_sqs_queue" "payments_captured_dlq" {
-  name = "${terraform.workspace}-payments-captured-dlq"
-
-  tags = {
-    Service     = "checkout"
-    Environment = terraform.workspace
-  }
-}
-
-resource "aws_sqs_queue" "payments_captured" {
-  name = "${terraform.workspace}-payments-captured"
-
-  redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.payments_captured_dlq.arn
-    maxReceiveCount     = 3
-  })
-
-  tags = {
-    Service     = "checkout"
-    Environment = terraform.workspace
-  }
-}
-
-# ---------------------------------------------------------------------------
-# inventory-reserved
-# ---------------------------------------------------------------------------
-resource "aws_sqs_queue" "inventory_reserved_dlq" {
-  name = "${terraform.workspace}-inventory-reserved-dlq"
-
-  tags = {
-    Service     = "checkout"
-    Environment = terraform.workspace
-  }
-}
-
-resource "aws_sqs_queue" "inventory_reserved" {
-  name = "${terraform.workspace}-inventory-reserved"
-
-  # NOTE: redrive target points at the orders DLQ here.
-  redrive_policy = jsonencode({
-    deadLetterTargetArn = aws_sqs_queue.orders_created_dlq.arn
-    maxReceiveCount     = 10
-  })
-
-  tags = {
-    Service     = "checkout"
-    Environment = terraform.workspace
-  }
+  queue_name        = each.value.name
+  max_receive_count = each.value.max_receive_count
+  tags              = local.common_tags
 }

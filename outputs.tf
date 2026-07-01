@@ -1,12 +1,24 @@
-# The checkout deployment module needs to read the URL and ARN of each
-# queue so the application can publish events. Today only a subset is
-# exposed.
-output "orders_created_queue_url" {
-  description = "URL of the orders-created queue."
-  value       = aws_sqs_queue.orders_created.url
-}
+# Checkout queue outputs consumed by the checkout deployment module.
+# Each queue's URL, ARN, and DLQ ARN is exposed in a typed map keyed by
+# the logical queue identifier (orders_created, payments_captured,
+# inventory_reserved). Adding a new entry to var.queues automatically
+# adds it to this output — no changes needed in outputs.tf.
+#
+# Consumers can reference individual values directly:
+#   module.checkout_queues["orders_created"].queue_url
 
-output "payments_captured_queue_arn" {
-  description = "ARN of the payments-captured queue."
-  value       = aws_sqs_queue.payments_captured.arn
+output "checkout_queues" {
+  description = <<-EOT
+    Map of queue information for all checkout queues. Each entry contains:
+    - queue_url: URL of the primary queue.
+    - queue_arn: ARN of the primary queue.
+    - dlq_arn:   ARN of the dead-letter queue.
+  EOT
+  value = {
+    for k, q in module.checkout_queues : k => {
+      queue_url = q.queue_url
+      queue_arn = q.queue_arn
+      dlq_arn   = q.dlq_arn
+    }
+  }
 }
